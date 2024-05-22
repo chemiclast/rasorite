@@ -1,25 +1,23 @@
 use crate::benches::KpiType;
 use crate::data::{DataParsingError, DataPoint};
-use chrono::{DateTime, Utc};
-use csv::StringRecordsIntoIter;
-use once_cell::unsync::Lazy;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use csv::{StringRecord, StringRecordsIntoIter};
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 use thiserror::Error;
 
-static FILE_NAME_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new("([^ -]+?),").expect("Failed to compile Regex!"));
-
+#[derive(Debug)]
 pub struct AnalyticsData {
-    kpi_type: KpiType,
-    universe_id: u64,
-    data: Vec<(DateTime<Utc>, DataPoint)>,
+    pub kpi_type: KpiType,
+    pub universe_id: u64,
+    pub data: HashMap<String, Vec<(DateTime<Utc>, DataPoint)>>,
 }
 
 #[derive(Debug, Error)]
-enum AnalyticsParseError {
+pub enum AnalyticsParseError {
     #[error("The provided file was not able to be read as a CSV document!")]
     UnreadableFile,
 
@@ -44,7 +42,7 @@ enum AnalyticsParseError {
 
 fn get_universe_id(records: &mut StringRecordsIntoIter<File>) -> Result<u64, AnalyticsParseError> {
     let Some(Ok(first_line)) = records.next() else {
-        Err(AnalyticsParseError::EmptyFile)
+        return Err(AnalyticsParseError::EmptyFile);
     };
 
     if first_line.get(0).ne(&Some("Experience ID")) {
@@ -61,23 +59,59 @@ fn get_universe_id(records: &mut StringRecordsIntoIter<File>) -> Result<u64, Ana
         })
 }
 
+fn parse_record<'a>(
+    record: StringRecord,
+) -> Result<(String, (DateTime<Utc>, DataPoint)), AnalyticsParseError> {
+    Ok((
+        record
+            .get(0)
+            .ok_or(AnalyticsParseError::UnreadableFile)?
+            .to_string(),
+        (
+            NaiveDateTime::parse_from_str(
+                record.get(1).ok_or(AnalyticsParseError::UnreadableFile)?,
+                "%FT%T%.fZ",
+            )
+            .map_err(|_| AnalyticsParseError::UnreadableFile)?
+            .and_utc(),
+            record
+                .get(2)
+                .ok_or(AnalyticsParseError::UnreadableFile)?
+                .parse()
+                .map_err(|_| AnalyticsParseError::UnreadableFile)?,
+        ),
+    ))
+}
+
 pub fn parse_analytics_file(file: PathBuf) -> Result<AnalyticsData, AnalyticsParseError> {
-    let Some(kpi_type_captures) = FILE_NAME_PATTERN.captures(file.file_name()?.into()) else {
-        Err(AnalyticsParseError::MissingKpiType)
+    let Some(kpi_type_captures) = Regex::new("([^ -]+?),")
+        .expect("Failed to compile Regex!")
+        .captures(
+            file.file_name()
+                .ok_or(AnalyticsParseError::MissingKpiType)?
+                .to_str()
+                .ok_or(AnalyticsParseError::MissingKpiType)?,
+        )
+    else {
+        return Err(AnalyticsParseError::MissingKpiType);
     };
 
     let Some(kpi_type_match) = kpi_type_captures.get(1).map(|value| value.as_str()) else {
-        Err(AnalyticsParseError::MissingKpiType)
+        return Err(AnalyticsParseError::MissingKpiType);
     };
 
     let Ok(kpi_type) = KpiType::from_str(kpi_type_match) else {
-        Err(AnalyticsParseError::IncompatibleKpiType(
-            kpi_type_match.into_string(),
-        ))
+        return Err(AnalyticsParseError::IncompatibleKpiType(
+            kpi_type_match.to_string(),
+        ));
     };
 
-    let Ok(mut reader) = csv::ReaderBuilder::new().has_headers(false).from_path(file) else {
-        Err(AnalyticsParseError::UnreadableFile)
+    let Ok(reader) = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_path(file)
+    else {
+        return Err(AnalyticsParseError::UnreadableFile);
     };
 
     let mut records = reader.into_records();
@@ -85,12 +119,24 @@ pub fn parse_analytics_file(file: PathBuf) -> Result<AnalyticsData, AnalyticsPar
     let universe_id = get_universe_id(&mut records)?;
 
     // get_universe_id will read the Experience ID line and the next two lines after that line are a blank line and a header line
-    records = records.skip(2).into();
+    let records = records.skip(2);
 
-    let mut data = Vec::new();
+    let mut data: HashMap<String, Vec<(DateTime<Utc>, DataPoint)>> = HashMap::new();
 
-    for Ok(record) in records {
-        data.push((record.get(1)?.parse()?, record.get(2)?.parse()?))
+    for record in records {
+        let Ok(record) = record else { continue };
+        let result = parse_record(record);
+        if let Ok((name, result)) = result {
+            if data.contains_key(&name) {
+                data.get_mut(&name).unwrap().push(result);
+            } else {
+                data.insert(name, vec![result]);
+            }
+        }
+    }
+
+    if data.is_empty() {
+        return Err(AnalyticsParseError::EmptyFile);
     }
 
     Ok(AnalyticsData {

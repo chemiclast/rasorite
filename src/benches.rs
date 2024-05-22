@@ -1,11 +1,11 @@
 use crate::data::DataPoint;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use strum::EnumString;
+use strum::{Display, EnumString};
 use thiserror::Error;
 
-#[derive(EnumString)]
+#[derive(EnumString, Display, Clone, Debug)]
 pub enum KpiType {
     DailyActiveUsers,
     MonthlyActiveUsers,
@@ -22,14 +22,15 @@ struct BenchmarkApiResponse {
     data: HashMap<String, DataPoint>,
 }
 
+#[derive(Clone)]
 pub struct Benchmark {
-    benchmark_percentile: u64,
-    universe_kpi_percentile: Option<u64>,
-    data: Vec<(DateTime<Utc>, DataPoint)>,
+    pub benchmark_percentile: u64,
+    pub universe_kpi_percentile: Option<u64>,
+    pub data: Vec<(DateTime<Utc>, DataPoint)>,
 }
 
 #[derive(Debug, Error)]
-enum AnalyticsFetchError {
+pub enum AnalyticsFetchError {
     #[error(transparent)]
     Reqwest {
         #[from]
@@ -49,7 +50,7 @@ pub async fn fetch_benches(
     start_date: DateTime<Utc>,
     end_date: DateTime<Utc>,
 ) -> Result<Benchmark, AnalyticsFetchError> {
-    let url = format!("https://apis.roblox.com/developer-analytics-aggregations/v2/get-benchmarks?universeId={}&kpiType={}&startTime={}&endTime={}", universe_id, kpi_type.into(), start_date, end_date);
+    let url = format!("https://apis.roblox.com/developer-analytics-aggregations/v2/get-benchmarks?universeId={}&kpiType={}&startTime={}&endTime={}", universe_id, kpi_type, start_date.format("%FT%T%.fZ"), end_date.format("%FT%T%.fZ"));
     let BenchmarkApiResponse {
         benchmark_percentile,
         kpi_type: _,
@@ -72,14 +73,19 @@ pub async fn fetch_benches(
 
     for (date, point) in response_data {
         data.push((
-            date.parse()
-                .map_err(|_| AnalyticsFetchError::InvalidResponse)?,
+            NaiveDateTime::parse_from_str(&*date, "%FT%T%.fZ")
+                .map_err(|_| AnalyticsFetchError::InvalidResponse)?
+                .and_utc(),
             point,
         ))
     }
 
     Ok(Benchmark {
-        benchmark_percentile: benchmark_percentile.matches(char::is_numeric).into(),
+        benchmark_percentile: benchmark_percentile
+            .matches(char::is_numeric)
+            .collect::<String>()
+            .parse()
+            .unwrap(),
         universe_kpi_percentile,
         data,
     })
