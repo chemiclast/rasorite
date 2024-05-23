@@ -1,6 +1,6 @@
-use std::error::Error;
-use std::ops::Mul;
-
+use crate::data::{get_data_range, DataPoint};
+use crate::parse::AnalyticsData;
+use crate::Cli;
 use chrono::{DateTime, Utc};
 use derive_more::Display;
 use plotters::backend::{BitMapBackend, DrawingBackend};
@@ -14,10 +14,8 @@ use plotters_backend::{
     BackendColor, BackendCoord, BackendStyle, BackendTextStyle, DrawingErrorKind,
 };
 use plotters_svg::SVGBackend;
-
-use crate::data::{get_data_range, DataPoint};
-use crate::parse::AnalyticsData;
-use crate::Cli;
+use std::error::Error;
+use std::ops::Mul;
 
 enum DrawingBackendVariant<'a> {
     Vector(SVGBackend<'a>),
@@ -90,7 +88,7 @@ impl DrawingBackend for DrawingBackendVariant<'_> {
 
     fn draw_pixel(
         &mut self,
-        point: plotters_backend::BackendCoord,
+        point: BackendCoord,
         color: BackendColor,
     ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
         match self {
