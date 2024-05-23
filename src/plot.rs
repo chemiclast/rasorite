@@ -1,17 +1,22 @@
 use crate::data::{get_data_range, DataPoint};
 use crate::parse::AnalyticsData;
+use crate::Cli;
 use chrono::{DateTime, Utc};
-use plotters::backend::DrawingBackend;
+use plotters::backend::{BitMapBackend, DrawingBackend};
 use plotters::chart::{ChartBuilder, LabelAreaPosition};
 use plotters::drawing::IntoDrawingArea;
 use plotters::series::LineSeries;
 use plotters::style::full_palette::{GREY, LIGHTBLUE, ORANGE};
 use plotters::style::FontFamily::SansSerif;
-use plotters::style::{FontStyle, IntoFont, BLACK, WHITE};
-use plotters_svg::SVGBackend;
+use plotters::style::{Color, FontStyle, IntoFont, BLACK, WHITE};
 use std::ops::Mul;
 
-pub fn plot_data(data: AnalyticsData, normalize: bool) {
+pub fn plot_data(data: AnalyticsData, opts: &Cli) {
+    let Cli {
+        normalize,
+        out_file,
+        ..
+    } = opts;
     let data_series = data
         .data
         .clone()
@@ -25,7 +30,7 @@ pub fn plot_data(data: AnalyticsData, normalize: bool) {
         .find(|(key, _)| key.starts_with("Benchmark"))
         .expect("Failed to find benchmark series!");
 
-    let backend = SVGBackend::new("plot.svg", (1200, 800));
+    let backend = BitMapBackend::new(&out_file, (1200, 800));
     let mut drawing_area = backend.into_drawing_area();
 
     drawing_area
@@ -38,7 +43,7 @@ pub fn plot_data(data: AnalyticsData, normalize: bool) {
         )
         .expect("Failed to draw title!");
 
-    drawing_area = if normalize {
+    drawing_area = if *normalize {
         drawing_area.titled(
             &*format!("Normalized over series \"{}\"", bench_series.0),
             (SansSerif, 25f64, FontStyle::Italic)
@@ -58,9 +63,9 @@ pub fn plot_data(data: AnalyticsData, normalize: bool) {
     let mut chart = ChartBuilder::on(&drawing_area);
     chart
         .margin(5)
-        .top_x_label_area_size(0)
-        .set_label_area_size(LabelAreaPosition::Left, 40)
-        .set_label_area_size(LabelAreaPosition::Bottom, 40);
+        .margin_right(80)
+        .set_label_area_size(LabelAreaPosition::Left, 80)
+        .set_label_area_size(LabelAreaPosition::Bottom, 80);
 
     let (date_range, data_range) = get_data_range(
         &data
@@ -77,22 +82,28 @@ pub fn plot_data(data: AnalyticsData, normalize: bool) {
         .expect("Failed to construct chart!");
     chart_context
         .configure_mesh()
+        .label_style((SansSerif, 18))
+        .x_label_formatter(&|x| x.format("%F").to_string())
+        .y_label_formatter(&|y| <DataPoint as Into<u64>>::into(*y).to_string())
         .draw()
         .expect("Failed to draw chart!");
 
-    if normalize {
+    if *normalize {
         chart_context
             .draw_series(
-                LineSeries::new(normalize_data(data_series.1, bench_series.1), &ORANGE)
-                    .point_size(0),
+                LineSeries::new(
+                    normalize_data(data_series.1, bench_series.1),
+                    ORANGE.stroke_width(2),
+                )
+                .point_size(0),
             )
             .expect("Failed to draw data series!");
     } else {
         chart_context
-            .draw_series(LineSeries::new(data_series.1, &LIGHTBLUE).point_size(0))
+            .draw_series(LineSeries::new(data_series.1, LIGHTBLUE.stroke_width(2)).point_size(0))
             .expect("Failed to draw analytics data series!");
         chart_context
-            .draw_series(LineSeries::new(bench_series.1, &GREY).point_size(0))
+            .draw_series(LineSeries::new(bench_series.1, GREY.stroke_width(1)).point_size(0))
             .expect("Failed to draw benchmark data series!");
     }
 

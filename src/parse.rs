@@ -83,7 +83,7 @@ fn parse_record<'a>(
     ))
 }
 
-pub fn parse_analytics_file(file: PathBuf) -> Result<AnalyticsData, AnalyticsParseError> {
+pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsParseError> {
     let Some(kpi_type_captures) = Regex::new("([^ -]+?),")
         .expect("Failed to compile Regex!")
         .captures(
@@ -117,9 +117,6 @@ pub fn parse_analytics_file(file: PathBuf) -> Result<AnalyticsData, AnalyticsPar
     let mut records = reader.into_records();
 
     let universe_id = get_universe_id(&mut records)?;
-
-    // get_universe_id will read the Experience ID line and the next two lines after that line are a blank line and a header line
-    let records = records.skip(2);
 
     let mut data: HashMap<String, Vec<(DateTime<Utc>, DataPoint)>> = HashMap::new();
 

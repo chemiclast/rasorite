@@ -10,7 +10,7 @@ pub enum KpiType {
     DailyActiveUsers,
     MonthlyActiveUsers,
     Visits,
-    TotalHours,
+    TotalPlayTimeHours,
 }
 
 #[derive(Serialize, Deserialize)]

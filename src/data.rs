@@ -59,6 +59,15 @@ impl Into<f64> for DataPoint {
     }
 }
 
+impl Into<u64> for DataPoint {
+    fn into(self) -> u64 {
+        match self {
+            DataPoint::Float(value) => value.to_num(),
+            DataPoint::Integer(value) => value,
+        }
+    }
+}
+
 impl From<f64> for DataPoint {
     fn from(value: f64) -> Self {
         DataPoint::Float(I32F32::from_num(value))
