@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
-use clap::builder::TypedValueParser;
-use derive_more::{Add, Sub};
+use derive_more::{Add, Display, Sub};
 use fixed::types::I32F32;
 use plotters::coord::ranged1d::{KeyPointHint, NoDefaultFormatting, ValueFormatter};
 use plotters::data::float::FloatPrettyPrinter;
 use plotters::prelude::Ranged;
 use serde::{Deserialize, Serialize};
-use std::ops::{AddAssign, Div, Mul, Range, Sub, SubAssign};
+use std::ops::{AddAssign, Div, Mul, Range, SubAssign};
 use std::str::FromStr;
+use strum::EnumString;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Sub, Add, Debug)]
@@ -20,6 +20,14 @@ pub enum DataPoint {
 pub enum DataParsingError {
     #[error("The provided string failed to parse as a data point!")]
     CannotParse,
+}
+
+#[derive(EnumString, Display, Clone, Debug)]
+pub enum KpiType {
+    DailyActiveUsers,
+    MonthlyActiveUsers,
+    Visits,
+    TotalPlayTimeHours,
 }
 
 impl FromStr for DataPoint {

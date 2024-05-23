@@ -1,10 +1,8 @@
 use crate::parse::parse_analytics_file;
 use crate::plot::plot_data;
-use clap::{Parser, Subcommand};
-use serde::de::Error;
+use clap::Parser;
 use std::path::PathBuf;
 
-mod benches;
 mod data;
 mod parse;
 mod plot;
@@ -17,7 +15,7 @@ struct Cli {
     normalize: bool,
 
     #[arg(short, long)]
-    /// The file to export the graph to. Must be a bitmap image file type
+    /// The file to export the graph to. Must be an image file type, can be either bitmap or vector
     out_file: PathBuf,
 
     #[arg(short, long)]

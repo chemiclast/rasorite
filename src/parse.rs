@@ -1,4 +1,4 @@
-use crate::benches::KpiType;
+use crate::data::KpiType;
 use crate::data::{DataParsingError, DataPoint};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use csv::{StringRecord, StringRecordsIntoIter};

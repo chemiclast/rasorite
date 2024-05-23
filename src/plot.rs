@@ -1,7 +1,8 @@
-use crate::data::{get_data_range, DataPoint};
-use crate::parse::AnalyticsData;
-use crate::Cli;
+use std::error::Error;
+use std::ops::Mul;
+
 use chrono::{DateTime, Utc};
+use derive_more::Display;
 use plotters::backend::{BitMapBackend, DrawingBackend};
 use plotters::chart::{ChartBuilder, LabelAreaPosition};
 use plotters::drawing::IntoDrawingArea;
@@ -9,7 +10,238 @@ use plotters::series::LineSeries;
 use plotters::style::full_palette::{GREY, LIGHTBLUE, ORANGE};
 use plotters::style::FontFamily::SansSerif;
 use plotters::style::{Color, FontStyle, IntoFont, BLACK, WHITE};
-use std::ops::Mul;
+use plotters_backend::{
+    BackendColor, BackendCoord, BackendStyle, BackendTextStyle, DrawingErrorKind,
+};
+use plotters_svg::SVGBackend;
+
+use crate::data::{get_data_range, DataPoint};
+use crate::parse::AnalyticsData;
+use crate::Cli;
+
+enum DrawingBackendVariant<'a> {
+    Vector(SVGBackend<'a>),
+    Bitmap(BitMapBackend<'a>),
+}
+
+#[derive(Debug, Display)]
+enum DrawingBackendError {
+    Vector(std::io::Error),
+    Bitmap(plotters_bitmap::BitMapBackendError),
+}
+
+fn map_vector_err(e: DrawingErrorKind<std::io::Error>) -> DrawingErrorKind<DrawingBackendError> {
+    match e {
+        DrawingErrorKind::DrawingError(inner) => DrawingErrorKind::DrawingError(inner.into()),
+        DrawingErrorKind::FontError(inner) => DrawingErrorKind::FontError(inner),
+    }
+}
+
+fn map_bitmap_err(
+    e: DrawingErrorKind<plotters_bitmap::BitMapBackendError>,
+) -> DrawingErrorKind<DrawingBackendError> {
+    match e {
+        DrawingErrorKind::DrawingError(inner) => DrawingErrorKind::DrawingError(inner.into()),
+        DrawingErrorKind::FontError(inner) => DrawingErrorKind::FontError(inner),
+    }
+}
+
+impl From<std::io::Error> for DrawingBackendError {
+    fn from(value: std::io::Error) -> Self {
+        DrawingBackendError::Vector(value)
+    }
+}
+
+impl From<plotters_bitmap::BitMapBackendError> for DrawingBackendError {
+    fn from(value: plotters_bitmap::BitMapBackendError) -> Self {
+        DrawingBackendError::Bitmap(value)
+    }
+}
+
+impl Error for DrawingBackendError {}
+
+impl DrawingBackend for DrawingBackendVariant<'_> {
+    type ErrorType = DrawingBackendError;
+
+    fn get_size(&self) -> (u32, u32) {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend.get_size(),
+            DrawingBackendVariant::Bitmap(backend) => backend.get_size(),
+        }
+    }
+
+    fn ensure_prepared(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.ensure_prepared().map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.ensure_prepared().map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn present(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend.present().map_err(map_vector_err),
+            DrawingBackendVariant::Bitmap(backend) => backend.present().map_err(map_bitmap_err),
+        }
+    }
+
+    fn draw_pixel(
+        &mut self,
+        point: plotters_backend::BackendCoord,
+        color: BackendColor,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.draw_pixel(point, color).map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.draw_pixel(point, color).map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn draw_line<S: BackendStyle>(
+        &mut self,
+        from: BackendCoord,
+        to: BackendCoord,
+        style: &S,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.draw_line(from, to, style).map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.draw_line(from, to, style).map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn draw_rect<S: BackendStyle>(
+        &mut self,
+        upper_left: BackendCoord,
+        bottom_right: BackendCoord,
+        style: &S,
+        fill: bool,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend
+                .draw_rect(upper_left, bottom_right, style, fill)
+                .map_err(map_vector_err),
+            DrawingBackendVariant::Bitmap(backend) => backend
+                .draw_rect(upper_left, bottom_right, style, fill)
+                .map_err(map_bitmap_err),
+        }
+    }
+
+    fn draw_path<S: BackendStyle, I: IntoIterator<Item = BackendCoord>>(
+        &mut self,
+        path: I,
+        style: &S,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.draw_path(path, style).map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.draw_path(path, style).map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn draw_circle<S: BackendStyle>(
+        &mut self,
+        center: BackendCoord,
+        radius: u32,
+        style: &S,
+        fill: bool,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend
+                .draw_circle(center, radius, style, fill)
+                .map_err(map_vector_err),
+            DrawingBackendVariant::Bitmap(backend) => backend
+                .draw_circle(center, radius, style, fill)
+                .map_err(map_bitmap_err),
+        }
+    }
+
+    fn fill_polygon<S: BackendStyle, I: IntoIterator<Item = BackendCoord>>(
+        &mut self,
+        vert: I,
+        style: &S,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.fill_polygon(vert, style).map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.fill_polygon(vert, style).map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn draw_text<TStyle: BackendTextStyle>(
+        &mut self,
+        text: &str,
+        style: &TStyle,
+        pos: BackendCoord,
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => {
+                backend.draw_text(text, style, pos).map_err(map_vector_err)
+            }
+            DrawingBackendVariant::Bitmap(backend) => {
+                backend.draw_text(text, style, pos).map_err(map_bitmap_err)
+            }
+        }
+    }
+
+    fn estimate_text_size<TStyle: BackendTextStyle>(
+        &self,
+        text: &str,
+        style: &TStyle,
+    ) -> Result<(u32, u32), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend
+                .estimate_text_size(text, style)
+                .map_err(map_vector_err),
+            DrawingBackendVariant::Bitmap(backend) => backend
+                .estimate_text_size(text, style)
+                .map_err(map_bitmap_err),
+        }
+    }
+
+    fn blit_bitmap(
+        &mut self,
+        pos: BackendCoord,
+        (iw, ih): (u32, u32),
+        src: &[u8],
+    ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+        match self {
+            DrawingBackendVariant::Vector(backend) => backend
+                .blit_bitmap(pos, (iw, ih), src)
+                .map_err(map_vector_err),
+            DrawingBackendVariant::Bitmap(backend) => backend
+                .blit_bitmap(pos, (iw, ih), src)
+                .map_err(map_bitmap_err),
+        }
+    }
+}
+
+impl<'a> From<SVGBackend<'a>> for DrawingBackendVariant<'a> {
+    fn from(value: SVGBackend<'a>) -> Self {
+        DrawingBackendVariant::Vector(value)
+    }
+}
+
+impl<'a> From<BitMapBackend<'a>> for DrawingBackendVariant<'a> {
+    fn from(value: BitMapBackend<'a>) -> Self {
+        DrawingBackendVariant::Bitmap(value)
+    }
+}
 
 pub fn plot_data(data: AnalyticsData, opts: &Cli) {
     let Cli {
@@ -30,7 +262,11 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         .find(|(key, _)| key.starts_with("Benchmark"))
         .expect("Failed to find benchmark series!");
 
-    let backend = BitMapBackend::new(&out_file, (1200, 800));
+    let backend = match &out_file.extension().and_then(|value| value.to_str()) {
+        Some("svg") => DrawingBackendVariant::Vector(SVGBackend::new(&out_file, (1200, 800))),
+        Some(_) => DrawingBackendVariant::Bitmap(BitMapBackend::new(&out_file, (1200, 800))),
+        _ => panic!("The provided output file is of an invalid file type!"),
+    };
     let mut drawing_area = backend.into_drawing_area();
 
     drawing_area
@@ -93,17 +329,21 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
             .draw_series(
                 LineSeries::new(
                     normalize_data(data_series.1, bench_series.1),
-                    ORANGE.stroke_width(2),
+                    Color::stroke_width(&ORANGE, 2),
                 )
                 .point_size(0),
             )
             .expect("Failed to draw data series!");
     } else {
         chart_context
-            .draw_series(LineSeries::new(data_series.1, LIGHTBLUE.stroke_width(2)).point_size(0))
+            .draw_series(
+                LineSeries::new(data_series.1, Color::stroke_width(&LIGHTBLUE, 2)).point_size(0),
+            )
             .expect("Failed to draw analytics data series!");
         chart_context
-            .draw_series(LineSeries::new(bench_series.1, GREY.stroke_width(1)).point_size(0))
+            .draw_series(
+                LineSeries::new(bench_series.1, Color::stroke_width(&GREY, 1)).point_size(0),
+            )
             .expect("Failed to draw benchmark data series!");
     }
 
