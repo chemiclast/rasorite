@@ -303,15 +303,28 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         .set_label_area_size(LabelAreaPosition::Left, 80)
         .set_label_area_size(LabelAreaPosition::Bottom, 80);
 
-    let (date_range, data_range) = get_data_range(
-        &data
-            .data
-            .into_values()
-            .collect::<Vec<Vec<(DateTime<Utc>, DataPoint)>>>()
-            .into_iter()
-            .flatten()
-            .collect(),
-    );
+    let normalized_data = if *normalize {
+        Some(normalize_data(
+            data_series.clone().1,
+            bench_series.clone().1,
+        ))
+    } else {
+        None
+    };
+
+    let (date_range, data_range) = if let Some(data) = &normalized_data {
+        get_data_range(data)
+    } else {
+        get_data_range(
+            &data
+                .data
+                .into_values()
+                .collect::<Vec<Vec<(DateTime<Utc>, DataPoint)>>>()
+                .into_iter()
+                .flatten()
+                .collect(),
+        )
+    };
 
     let mut chart_context = chart
         .build_cartesian_2d(date_range, data_range)
@@ -324,15 +337,9 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         .draw()
         .expect("Failed to draw chart!");
 
-    if *normalize {
+    if let Some(data) = normalized_data {
         chart_context
-            .draw_series(
-                LineSeries::new(
-                    normalize_data(data_series.1, bench_series.1),
-                    Color::stroke_width(&ORANGE, 2),
-                )
-                .point_size(0),
-            )
+            .draw_series(LineSeries::new(data, Color::stroke_width(&ORANGE, 2)).point_size(0))
             .expect("Failed to draw data series!");
     } else {
         chart_context
