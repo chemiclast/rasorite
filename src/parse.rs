@@ -1,7 +1,8 @@
+use crate::data::DataPoint;
 use crate::data::KpiType;
-use crate::data::{DataParsingError, DataPoint};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use csv::{StringRecord, StringRecordsIntoIter};
+use log::info;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
@@ -35,9 +36,6 @@ pub enum AnalyticsParseError {
 
     #[error("Unable to extract KPI type from file name! Did you rename the file?")]
     MissingKpiType,
-
-    #[error(transparent)]
-    DataParsingError { source: DataParsingError },
 }
 
 fn get_universe_id(records: &mut StringRecordsIntoIter<File>) -> Result<u64, AnalyticsParseError> {
@@ -84,6 +82,8 @@ fn parse_record<'a>(
 }
 
 pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsParseError> {
+    info!("Finding KPI type...");
+
     let Some(kpi_type_captures) = Regex::new("([^ -]+?),")
         .expect("Failed to compile Regex!")
         .captures(
@@ -106,6 +106,8 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
         ));
     };
 
+    info!("Found KPI type {}", kpi_type);
+
     let Ok(reader) = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
@@ -116,9 +118,15 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
 
     let mut records = reader.into_records();
 
+    info!("Finding Experience ID...");
+
     let universe_id = get_universe_id(&mut records)?;
 
+    info!("Found Experience ID {}", universe_id);
+
     let mut data: HashMap<String, Vec<(DateTime<Utc>, DataPoint)>> = HashMap::new();
+
+    info!("Collecting data records...");
 
     for record in records {
         let Ok(record) = record else { continue };
@@ -135,6 +143,12 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
     if data.is_empty() {
         return Err(AnalyticsParseError::EmptyFile);
     }
+
+    info!(
+        "Found {} series totalling {} records",
+        data.len(),
+        data.iter().map(|(_, value)| value.len()).sum::<usize>()
+    );
 
     Ok(AnalyticsData {
         universe_id,

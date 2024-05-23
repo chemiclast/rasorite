@@ -3,6 +3,7 @@ use crate::parse::AnalyticsData;
 use crate::Cli;
 use chrono::{DateTime, Utc};
 use derive_more::Display;
+use log::{info, warn};
 use plotters::backend::{BitMapBackend, DrawingBackend};
 use plotters::chart::{ChartBuilder, LabelAreaPosition};
 use plotters::drawing::IntoDrawingArea;
@@ -16,6 +17,7 @@ use plotters_backend::{
 use plotters_svg::SVGBackend;
 use std::error::Error;
 use std::ops::Mul;
+use thiserror::Error;
 
 enum DrawingBackendVariant<'a> {
     Vector(SVGBackend<'a>),
@@ -241,31 +243,52 @@ impl<'a> From<BitMapBackend<'a>> for DrawingBackendVariant<'a> {
     }
 }
 
-pub fn plot_data(data: AnalyticsData, opts: &Cli) {
+#[derive(Debug, Error)]
+pub enum PlottingError {
+    #[error("The analytics data series is missing!")]
+    SeriesMissing,
+
+    #[error("The provided output file path is invalid!")]
+    InvalidOutput,
+}
+
+pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
     let Cli {
         normalize,
         out_file,
         ..
     } = opts;
+
+    info!("Finding data series...");
+
     let data_series = data
         .data
         .clone()
         .into_iter()
-        .find(|(key, _)| !key.starts_with("Benchmark"))
-        .expect("Failed to find analytics data series!");
+        .find(|(key, _)| key.starts_with("Total"))
+        .ok_or(PlottingError::SeriesMissing)?;
     let bench_series = data
         .data
         .clone()
         .into_iter()
-        .find(|(key, _)| key.starts_with("Benchmark"))
-        .expect("Failed to find benchmark series!");
+        .find(|(key, _)| key.starts_with("Benchmark"));
+
+    if bench_series.is_some() {
+        info!("Found analytics and benchmark series!");
+    } else {
+        warn!("Failed to find benchmark series. Make sure you are exporting a KPI that supports benchmarks and that the \"View by\" option is set to \"None\".")
+    }
+
+    info!("Initializing chart...");
 
     let backend = match &out_file.extension().and_then(|value| value.to_str()) {
         Some("svg") => DrawingBackendVariant::Vector(SVGBackend::new(&out_file, (1200, 800))),
         Some(_) => DrawingBackendVariant::Bitmap(BitMapBackend::new(&out_file, (1200, 800))),
-        _ => panic!("The provided output file is of an invalid file type!"),
+        _ => return Err(PlottingError::InvalidOutput),
     };
     let mut drawing_area = backend.into_drawing_area();
+
+    info!("Chart initialized!");
 
     drawing_area
         .fill(&WHITE)
@@ -277,22 +300,24 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         )
         .expect("Failed to draw title!");
 
-    drawing_area = if *normalize {
-        drawing_area.titled(
-            &*format!("Normalized over series \"{}\"", bench_series.0),
-            (SansSerif, 25f64, FontStyle::Italic)
-                .into_font()
-                .color(&GREY),
-        )
-    } else {
-        drawing_area.titled(
-            &*format!("Plotted with series \"{}\"", bench_series.0),
-            (SansSerif, 25f64, FontStyle::Italic)
-                .into_font()
-                .color(&GREY),
-        )
+    if let Some(bench_series) = &bench_series {
+        drawing_area = if *normalize {
+            drawing_area.titled(
+                &*format!("Normalized over series \"{}\"", bench_series.0),
+                (SansSerif, 25f64, FontStyle::Italic)
+                    .into_font()
+                    .color(&GREY),
+            )
+        } else {
+            drawing_area.titled(
+                &*format!("Plotted with series \"{}\"", bench_series.0),
+                (SansSerif, 25f64, FontStyle::Italic)
+                    .into_font()
+                    .color(&GREY),
+            )
+        }
+        .expect("Failed to draw subtitle!")
     }
-    .expect("Failed to draw subtitle!");
 
     let mut chart = ChartBuilder::on(&drawing_area);
     chart
@@ -301,14 +326,21 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         .set_label_area_size(LabelAreaPosition::Left, 80)
         .set_label_area_size(LabelAreaPosition::Bottom, 80);
 
-    let normalized_data = if *normalize {
+    let normalized_data = if bench_series.is_some() && *normalize {
+        info!("Normalizing data around benchmark...");
         Some(normalize_data(
             data_series.clone().1,
-            bench_series.clone().1,
+            bench_series.clone().unwrap().1,
         ))
     } else {
         None
     };
+
+    if normalized_data.is_some() {
+        info!("Data normalized!");
+    }
+
+    info!("Getting axis ranges...");
 
     let (date_range, data_range) = if let Some(data) = &normalized_data {
         get_data_range(data)
@@ -324,6 +356,8 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         )
     };
 
+    info!("Ranges calculated!");
+
     let mut chart_context = chart
         .build_cartesian_2d(date_range, data_range)
         .expect("Failed to construct chart!");
@@ -335,26 +369,45 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) {
         .draw()
         .expect("Failed to draw chart!");
 
+    if bench_series.is_some() {
+        chart.caption(
+            bench_series.as_ref().unwrap().0.clone(),
+            (SansSerif, 25, FontStyle::Italic, &GREY),
+        );
+    }
+
     if let Some(data) = normalized_data {
+        info!("Drawing normalized data series...");
         chart_context
             .draw_series(LineSeries::new(data, Color::stroke_width(&ORANGE, 2)).point_size(0))
             .expect("Failed to draw data series!");
-    } else {
+    } else if let Some(bench_series) = bench_series {
+        info!("Drawing analytics data series...");
         chart_context
             .draw_series(
                 LineSeries::new(data_series.1, Color::stroke_width(&LIGHTBLUE, 2)).point_size(0),
             )
             .expect("Failed to draw analytics data series!");
+        info!("Drawing benchmark data series...");
         chart_context
             .draw_series(
                 LineSeries::new(bench_series.1, Color::stroke_width(&GREY, 1)).point_size(0),
             )
             .expect("Failed to draw benchmark data series!");
+    } else {
+        info!("Drawing analytics data series...");
+        chart_context
+            .draw_series(
+                LineSeries::new(data_series.1, Color::stroke_width(&LIGHTBLUE, 2)).point_size(0),
+            )
+            .expect("Failed to draw analytics data series!");
     }
 
-    chart.caption(bench_series.0, (SansSerif, 25, FontStyle::Italic, &GREY));
+    info!("Data plotted!");
 
     drawing_area.present().expect("Failed to present plot!");
+
+    Ok(())
 }
 
 impl Mul<f64> for &DataPoint {

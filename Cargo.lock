@@ -858,6 +858,7 @@ dependencies = [
  "csv",
  "derive_more",
  "fixed",
+ "log",
  "opener",
  "plotters",
  "plotters-backend",
