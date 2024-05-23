@@ -295,7 +295,7 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
         .expect("Failed to fill drawing area!");
     drawing_area = drawing_area
         .titled(
-            &*format!("{} for Experience ID {}", data.kpi_type, data.universe_id),
+            &format!("{} for Experience ID {}", data.kpi_type, data.universe_id),
             (SansSerif, 50, FontStyle::Bold).into_font().color(&BLACK),
         )
         .expect("Failed to draw title!");
@@ -303,14 +303,14 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
     if let Some(bench_series) = &bench_series {
         drawing_area = if *normalize {
             drawing_area.titled(
-                &*format!("Normalized over series \"{}\"", bench_series.0),
+                &format!("Normalized over series \"{}\"", bench_series.0),
                 (SansSerif, 25f64, FontStyle::Italic)
                     .into_font()
                     .color(&GREY),
             )
         } else {
             drawing_area.titled(
-                &*format!("Plotted with series \"{}\"", bench_series.0),
+                &format!("Plotted with series \"{}\"", bench_series.0),
                 (SansSerif, 25f64, FontStyle::Italic)
                     .into_font()
                     .color(&GREY),
@@ -369,9 +369,9 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
         .draw()
         .expect("Failed to draw chart!");
 
-    if bench_series.is_some() {
+    if let Some(bench_series) = &bench_series {
         chart.caption(
-            bench_series.as_ref().unwrap().0.clone(),
+            bench_series.0.clone(),
             (SansSerif, 25, FontStyle::Italic, &GREY),
         );
     }

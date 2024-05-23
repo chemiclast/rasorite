@@ -57,18 +57,18 @@ impl From<u64> for DataPoint {
     }
 }
 
-impl Into<f64> for DataPoint {
-    fn into(self) -> f64 {
-        match self {
+impl From<DataPoint> for f64 {
+    fn from(val: DataPoint) -> Self {
+        match val {
             DataPoint::Float(value) => value.to_num(),
             DataPoint::Integer(value) => value as f64,
         }
     }
 }
 
-impl Into<u64> for DataPoint {
-    fn into(self) -> u64 {
-        match self {
+impl From<DataPoint> for u64 {
+    fn from(val: DataPoint) -> Self {
+        match val {
             DataPoint::Float(value) => value.to_num(),
             DataPoint::Integer(value) => value,
         }
@@ -145,9 +145,8 @@ impl Ranged for RangedDataPoint {
         }
 
         let logic_length: f64 = (<DataPoint as Into<f64>>::into(value.to_owned())
-            - <DataPoint as Into<f64>>::into(self.0.clone()))
-            / (<DataPoint as Into<f64>>::into(self.1.clone())
-                - <DataPoint as Into<f64>>::into(self.0.clone()));
+            - <DataPoint as Into<f64>>::into(self.0))
+            / (<DataPoint as Into<f64>>::into(self.1) - <DataPoint as Into<f64>>::into(self.0));
 
         let actual_length = limit.1 - limit.0;
 
@@ -163,11 +162,11 @@ impl Ranged for RangedDataPoint {
             };
         }
 
-        return if actual_length > 0 {
+        if actual_length > 0 {
             limit.0 + (actual_length as f64 * logic_length + 1e-3).floor() as i32
         } else {
             limit.0 + (actual_length as f64 * logic_length - 1e-3).ceil() as i32
-        };
+        }
     }
 
     fn key_points<Hint: KeyPointHint>(&self, hint: Hint) -> Vec<Self::ValueType> {
@@ -177,10 +176,7 @@ impl Ranged for RangedDataPoint {
             return vec![];
         }
 
-        let range: (f64, f64) = (
-            self.0.clone().min(self.1.clone()).into(),
-            self.1.clone().max(self.0.clone()).into(),
-        );
+        let range: (f64, f64) = (self.0.min(self.1).into(), self.1.max(self.0).into());
 
         assert!(!(range.0.is_nan() || range.1.is_nan()));
 
@@ -258,7 +254,7 @@ impl Ranged for RangedDataPoint {
             ret.push((left_relative + left_base).into());
             left_relative += scale;
         }
-        return ret;
+        ret
     }
 
     fn range(&self) -> Range<Self::ValueType> {
@@ -280,6 +276,7 @@ impl ValueFormatter<DataPoint> for RangedDataPoint {
     }
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn get_data_range(
     data: &Vec<(DateTime<Utc>, DataPoint)>,
 ) -> (Range<DateTime<Utc>>, RangedDataPoint) {
@@ -295,8 +292,8 @@ pub fn get_data_range(
             .1;
 
     // add 10% boundary to make sure data points have margin
-    let value_range_len = (value_range.end.clone() - value_range.start.clone()).unwrap();
-    value_range.start -= (value_range_len.clone() / 10).min(value_range.start);
+    let value_range_len = (value_range.end - value_range.start).unwrap();
+    value_range.start -= (value_range_len / 10).min(value_range.start);
     value_range.end += value_range_len / 10;
 
     return (

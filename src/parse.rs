@@ -57,7 +57,7 @@ fn get_universe_id(records: &mut StringRecordsIntoIter<File>) -> Result<u64, Ana
         })
 }
 
-fn parse_record<'a>(
+fn parse_record(
     record: StringRecord,
 ) -> Result<(String, (DateTime<Utc>, DataPoint)), AnalyticsParseError> {
     Ok((
@@ -132,10 +132,10 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
         let Ok(record) = record else { continue };
         let result = parse_record(record);
         if let Ok((name, result)) = result {
-            if data.contains_key(&name) {
-                data.get_mut(&name).unwrap().push(result);
+            if let std::collections::hash_map::Entry::Vacant(e) = data.entry(name.clone()) {
+                e.insert(vec![result]);
             } else {
-                data.insert(name, vec![result]);
+                data.get_mut(&name).unwrap().push(result);
             }
         }
     }
@@ -147,7 +147,7 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
     info!(
         "Found {} series totalling {} records",
         data.len(),
-        data.iter().map(|(_, value)| value.len()).sum::<usize>()
+        data.values().map(|value| value.len()).sum::<usize>()
     );
 
     Ok(AnalyticsData {
