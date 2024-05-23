@@ -4,13 +4,12 @@ use fixed::types::I32F32;
 use plotters::coord::ranged1d::{KeyPointHint, NoDefaultFormatting, ValueFormatter};
 use plotters::data::float::FloatPrettyPrinter;
 use plotters::prelude::Ranged;
-use serde::{Deserialize, Serialize};
 use std::ops::{AddAssign, Div, Mul, Range, SubAssign};
 use std::str::FromStr;
 use strum::EnumString;
 use thiserror::Error;
 
-#[derive(Clone, Copy, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Sub, Add, Debug)]
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Sub, Add, Debug)]
 pub enum DataPoint {
     Float(I32F32),
     Integer(u64),
