@@ -1,16 +1,16 @@
 use chrono::{DateTime, Utc};
-use derive_more::{Add, Display, Sub};
 use fixed::types::I32F32;
 use plotters::coord::ranged1d::{KeyPointHint, NoDefaultFormatting, ValueFormatter};
 use plotters::data::float::FloatPrettyPrinter;
 use plotters::prelude::Ranged;
-use std::ops::{AddAssign, Div, Mul, Range, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, Range, Sub, SubAssign};
 use std::str::FromStr;
-use strum::EnumString;
+use strum::{Display, EnumString};
 use thiserror::Error;
 
-#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Sub, Add, Debug)]
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum DataPoint {
+    Zero,
     Float(I32F32),
     Integer(u64),
 }
@@ -23,17 +23,35 @@ pub enum DataParsingError {
 
 #[derive(EnumString, Display, Clone, Debug)]
 pub enum KpiType {
+    #[strum(to_string = "Daily Active Users")]
     DailyActiveUsers,
+
+    #[strum(to_string = "Monthly Active Users")]
     MonthlyActiveUsers,
+
+    #[strum(to_string = "Sessions")]
     Visits,
+
+    #[strum(serialize = "", to_string = "Total Playtime Hours")]
+    // Playtime is exported as a blank string for some reason
     TotalPlayTimeHours,
+
+    #[strum(to_string = "Daily Revenue")]
+    DailyRevenue,
+
+    #[strum(to_string = "Paying Users")]
+    PayingUsers,
 }
 
 impl FromStr for DataPoint {
     type Err = DataParsingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.matches(char::is_numeric).collect::<String>() == s {
+        // Zero has to be a special case as it can appear when the data points aren't integers
+        if s == "0" {
+            Ok(DataPoint::Zero)
+        } else if s.matches(char::is_numeric).collect::<String>() == s {
+            // If the string does not contain a decimal point, then we can assume it is an integer
             Ok(DataPoint::Integer(
                 s.parse().map_err(|_| DataParsingError::CannotParse)?,
             ))
@@ -62,6 +80,7 @@ impl From<DataPoint> for f64 {
         match val {
             DataPoint::Float(value) => value.to_num(),
             DataPoint::Integer(value) => value as f64,
+            DataPoint::Zero => 0f64,
         }
     }
 }
@@ -71,12 +90,16 @@ impl From<DataPoint> for u64 {
         match val {
             DataPoint::Float(value) => value.to_num(),
             DataPoint::Integer(value) => value,
+            DataPoint::Zero => 0u64,
         }
     }
 }
 
 impl From<f64> for DataPoint {
     fn from(value: f64) -> Self {
+        if value == 0f64 {
+            return DataPoint::Zero;
+        }
         DataPoint::Float(I32F32::from_num(value))
     }
 }
@@ -85,6 +108,10 @@ impl Mul for DataPoint {
     type Output = DataPoint;
 
     fn mul(self, rhs: Self) -> Self::Output {
+        if matches!(self, DataPoint::Zero) || matches!(rhs, DataPoint::Zero) {
+            return DataPoint::Zero;
+        }
+
         match self {
             DataPoint::Float(value_lhs) => {
                 let DataPoint::Float(value_rhs) = rhs else {
@@ -104,6 +131,7 @@ impl Mul for DataPoint {
 
                 DataPoint::Integer(value_lhs * value_rhs)
             }
+            _ => unreachable!(),
         }
     }
 }
@@ -112,22 +140,95 @@ impl Div<u32> for DataPoint {
     type Output = DataPoint;
 
     fn div(self, rhs: u32) -> Self::Output {
+        if matches!(self, DataPoint::Zero) {
+            return DataPoint::Zero;
+        }
+
         match self {
             DataPoint::Float(value) => DataPoint::from(value.to_num::<f64>() / rhs as f64),
             DataPoint::Integer(value) => DataPoint::Integer(value / rhs as u64),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Sub for DataPoint {
+    type Output = DataPoint;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if matches!(self, DataPoint::Zero) {
+            return rhs;
+        }
+
+        if matches!(rhs, DataPoint::Zero) {
+            return self;
+        }
+
+        match self {
+            DataPoint::Float(value_lhs) => {
+                let DataPoint::Float(value_rhs) = rhs else {
+                    panic!(
+                        "Attempted to perform data point arithmetic on different data point types!"
+                    )
+                };
+                DataPoint::Float(value_lhs - value_rhs)
+            }
+            DataPoint::Integer(value_lhs) => {
+                let DataPoint::Integer(value_rhs) = rhs else {
+                    panic!(
+                        "Attempted to perform data point arithmetic on different data point types!"
+                    )
+                };
+                DataPoint::Integer(value_lhs - value_rhs)
+            }
+            _ => unreachable!(),
         }
     }
 }
 
 impl SubAssign for DataPoint {
     fn sub_assign(&mut self, rhs: Self) {
-        *self = (self.to_owned() - rhs).unwrap()
+        *self = self.to_owned() - rhs
+    }
+}
+
+impl Add for DataPoint {
+    type Output = DataPoint;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if matches!(self, DataPoint::Zero) {
+            return rhs;
+        }
+
+        if matches!(rhs, DataPoint::Zero) {
+            return self;
+        }
+
+        match self {
+            DataPoint::Float(value_lhs) => {
+                let DataPoint::Float(value_rhs) = rhs else {
+                    panic!(
+                        "Attempted to perform data point arithmetic on different data point types!"
+                    )
+                };
+                DataPoint::Float(value_lhs + value_rhs)
+            }
+            DataPoint::Integer(value_lhs) => {
+                let DataPoint::Integer(value_rhs) = rhs else {
+                    panic!(
+                        "Attempted to perform data point arithmetic on different data point types!"
+                    )
+                };
+                DataPoint::Integer(value_lhs + value_rhs)
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
 impl AddAssign for DataPoint {
     fn add_assign(&mut self, rhs: Self) {
-        *self = (self.to_owned() + rhs).unwrap()
+        *self = self.to_owned() + rhs
     }
 }
 
@@ -272,6 +373,7 @@ impl ValueFormatter<DataPoint> for RangedDataPoint {
                 max_decimal: 5,
             }
             .print(value.to_num::<f64>()),
+            DataPoint::Zero => "0".to_string(),
         }
     }
 }
@@ -292,7 +394,7 @@ pub fn get_data_range(
             .1;
 
     // add 10% boundary to make sure data points have margin
-    let value_range_len = (value_range.end - value_range.start).unwrap();
+    let value_range_len = value_range.end - value_range.start;
     value_range.start -= (value_range_len / 10).min(value_range.start);
     value_range.end += value_range_len / 10;
 

@@ -3,7 +3,6 @@ use crate::data::KpiType;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use csv::{StringRecord, StringRecordsIntoIter};
 use log::info;
-use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
@@ -22,7 +21,7 @@ pub enum AnalyticsParseError {
     #[error("The provided file was not able to be read as a CSV document!")]
     UnreadableFile,
 
-    #[error("The KPI \"{0}\" is not supported!")]
+    #[error("The KPI \"{0}\" does not support benchmarks!")]
     IncompatibleKpiType(String),
 
     #[error("The provided file is empty!")]
@@ -34,7 +33,7 @@ pub enum AnalyticsParseError {
     #[error("The provided file does not have a valid Experience ID line!")]
     InvalidHeader,
 
-    #[error("Unable to extract KPI type from file name! Did you rename the file?")]
+    #[error("Unable to determine KPI type! Make sure the header line for the data is present and correct!")]
     MissingKpiType,
 }
 
@@ -54,6 +53,25 @@ fn get_universe_id(records: &mut StringRecordsIntoIter<File>) -> Result<u64, Ana
             value
                 .parse()
                 .map_err(|_| AnalyticsParseError::InvalidHeader)
+        })
+}
+
+/// Must be called after the first line (Experience ID) has been consumed
+fn get_kpi_type(records: &mut StringRecordsIntoIter<File>) -> Result<KpiType, AnalyticsParseError> {
+    let Some(Ok(first_line)) = records.next() else {
+        return Err(AnalyticsParseError::MissingKpiType);
+    };
+
+    if first_line.get(0).ne(&Some("Breakdown")) {
+        return Err(AnalyticsParseError::MissingKpiType);
+    };
+
+    first_line
+        .get(2)
+        .ok_or(AnalyticsParseError::MissingKpiType)
+        .and_then(|value| {
+            KpiType::from_str(value)
+                .map_err(|_| AnalyticsParseError::IncompatibleKpiType(value.to_string()))
         })
 }
 
@@ -82,32 +100,6 @@ fn parse_record(
 }
 
 pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsParseError> {
-    info!("Finding KPI type...");
-
-    let Some(kpi_type_captures) = Regex::new("([^ -]+?),")
-        .expect("Failed to compile Regex!")
-        .captures(
-            file.file_name()
-                .ok_or(AnalyticsParseError::MissingKpiType)?
-                .to_str()
-                .ok_or(AnalyticsParseError::MissingKpiType)?,
-        )
-    else {
-        return Err(AnalyticsParseError::MissingKpiType);
-    };
-
-    let Some(kpi_type_match) = kpi_type_captures.get(1).map(|value| value.as_str()) else {
-        return Err(AnalyticsParseError::MissingKpiType);
-    };
-
-    let Ok(kpi_type) = KpiType::from_str(kpi_type_match) else {
-        return Err(AnalyticsParseError::IncompatibleKpiType(
-            kpi_type_match.to_string(),
-        ));
-    };
-
-    info!("Found KPI type {}", kpi_type);
-
     let Ok(reader) = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
@@ -123,6 +115,12 @@ pub fn parse_analytics_file(file: &PathBuf) -> Result<AnalyticsData, AnalyticsPa
     let universe_id = get_universe_id(&mut records)?;
 
     info!("Found Experience ID {}", universe_id);
+
+    info!("Finding KPI type...");
+
+    let kpi_type = get_kpi_type(&mut records)?;
+
+    info!("Found KPI type {}", kpi_type);
 
     let mut data: HashMap<String, Vec<(DateTime<Utc>, DataPoint)>> = HashMap::new();
 

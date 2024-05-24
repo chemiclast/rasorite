@@ -2,7 +2,6 @@ use crate::data::{get_data_range, DataPoint};
 use crate::parse::AnalyticsData;
 use crate::Cli;
 use chrono::{DateTime, Utc};
-use derive_more::Display;
 use log::{info, warn};
 use plotters::backend::{BitMapBackend, DrawingBackend};
 use plotters::chart::{ChartBuilder, LabelAreaPosition};
@@ -16,6 +15,7 @@ use plotters_backend::{
 };
 use plotters_svg::SVGBackend;
 use std::error::Error;
+use std::fmt::Display;
 use std::ops::Mul;
 use thiserror::Error;
 
@@ -24,10 +24,19 @@ enum DrawingBackendVariant<'a> {
     Bitmap(BitMapBackend<'a>),
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 enum DrawingBackendError {
     Vector(std::io::Error),
     Bitmap(plotters_bitmap::BitMapBackendError),
+}
+
+impl Display for DrawingBackendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DrawingBackendError::Vector(inner) => write!(f, "Vector backend error: {}", inner),
+            DrawingBackendError::Bitmap(inner) => write!(f, "Bitmap backend error: {}", inner),
+        }
+    }
 }
 
 fn map_vector_err(e: DrawingErrorKind<std::io::Error>) -> DrawingErrorKind<DrawingBackendError> {
@@ -276,7 +285,7 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
     if bench_series.is_some() {
         info!("Found analytics and benchmark series!");
     } else {
-        warn!("Failed to find benchmark series. Make sure you are exporting a KPI that supports benchmarks and that the \"View by\" option is set to \"None\".")
+        warn!("Failed to find benchmark series! Make sure you are exporting the analytics data with benchmarks. The \"View by\" option must be set to \"None\" in your analytics dashboard for benchmarks to appear.")
     }
 
     info!("Initializing chart...");
@@ -405,7 +414,10 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
 
     info!("Data plotted!");
 
-    drawing_area.present().expect("Failed to present plot!");
+    // BitMapBackend will return an error when presenting when the output file extension is invalid
+    drawing_area
+        .present()
+        .map_err(|_| PlottingError::InvalidOutput)?;
 
     Ok(())
 }
@@ -417,6 +429,7 @@ impl Mul<f64> for &DataPoint {
         match self {
             DataPoint::Float(value) => value.to_num::<f64>() * rhs,
             DataPoint::Integer(value) => *value as f64 * rhs,
+            DataPoint::Zero => 0f64,
         }
     }
 }
