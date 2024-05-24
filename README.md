@@ -83,10 +83,8 @@ Normalization is performed rather simply by obtaining a normalization factor for
 mean of the benchmark data to the benchmark value corresponding to the data point. This factor is then multiplied by the
 data point to obtain the normalized value.
 
-```
-$$
+```math
 x_{\text{normalized}} = x \cdot \frac{bench_{\text{mean}}}{bench_{x}}
-$$
 ```
 
 ### Behavior upon Completion
