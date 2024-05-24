@@ -284,7 +284,7 @@ pub fn plot_data(data: AnalyticsData, opts: &Cli) -> Result<(), PlottingError> {
 
     if bench_series.is_some() {
         info!("Found analytics and benchmark series!");
-    } else {
+    } else if *normalize {
         warn!("Failed to find benchmark series! Make sure you are exporting the analytics data with benchmarks. The \"View by\" option must be set to \"None\" in your analytics dashboard for benchmarks to appear.")
     }
 
