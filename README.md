@@ -1,7 +1,5 @@
 # Rasorite
 
---- 
-
 Rasorite is a CLI tool for plotting Roblox analytics and benchmark data.
 
 ## Installation
