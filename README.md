@@ -53,12 +53,16 @@ would run:
 rasorite -i analytics.csv plot.png
 ```
 
+![Example Plot](./example/plot.png)
+
 Rasorite also supports vector graphics stored in the SVG format. To generate an SVG plot, simply specify the output file
 with the `.svg` extension:
 
 ```bash
 rasorite -i analytics.csv plot.svg
 ```
+
+![Example Plot](./example/plot.svg)
 
 ### Normalization
 
@@ -67,8 +71,10 @@ analytics data to account for fluctuations in the benchmarks provided. For examp
 in `analytics.csv` and save the plot as `plot.svg`, you would run:
 
 ```bash
-rasorite -i analytics.csv -n plot.svg
+rasorite -i analytics.csv -n normalized.svg
 ```
+
+![Example Plot](./example/normalized.svg)
 
 If benchmark data is not found in the analytics file, Rasorite will output a warning and will instead plot the raw
 analytics data without normalization.
