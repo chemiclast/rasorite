@@ -11,22 +11,25 @@ mod parse;
 mod plot;
 
 #[derive(Parser)]
-#[command(version, about, name = "rasorite", long_about = None)]
+#[command(version, about, long_about = None)]
 struct Cli {
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, long)]
     /// Plots the analytics series normalized against the benchmark series instead of plotting both the benchmark series and the analytics series
     normalize: bool,
-
-    #[arg(short, long)]
-    /// The file to export the graph to. Must be an image file type, can be either bitmap or vector
-    out_file: PathBuf,
 
     #[arg(short, long)]
     /// The CSV file exported from Roblox Analytics
     in_file: PathBuf,
 
+    /// The file to export the graph to. Must be an image file type, can be either bitmap or vector
+    out_file: PathBuf,
+
     #[command(flatten)]
     verbose: clap_verbosity_flag::Verbosity<WarnLevel>,
+
+    #[arg(short, long)]
+    /// Does not try to open the output file after it is created
+    silent: bool,
 }
 
 fn main() -> ExitCode {
@@ -48,10 +51,12 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    if let Err(e) = opener::open(cli.out_file) {
-        error!("{}", e);
-        return ExitCode::FAILURE;
-    };
+    if !cli.silent {
+        if let Err(e) = opener::open(cli.out_file) {
+            error!("{}", e);
+            return ExitCode::FAILURE;
+        };
+    }
 
     ExitCode::SUCCESS
 }
