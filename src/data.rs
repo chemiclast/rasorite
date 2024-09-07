@@ -32,9 +32,8 @@ pub enum KpiType {
     #[strum(to_string = "Sessions")]
     Visits,
 
-    #[strum(serialize = "", to_string = "Total Playtime Hours")]
-    // Playtime is exported as a blank string for some reason
-    TotalPlayTimeHours,
+    #[strum(to_string = "Total Playtime (Hours)")]
+    Playtime,
 
     #[strum(to_string = "Daily Revenue")]
     DailyRevenue,
